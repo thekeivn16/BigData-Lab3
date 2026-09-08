@@ -60,7 +60,146 @@ Task_1-2.csv
 
 ## Task 2-1
 
-Instructions will be added here.
+Percentage of Cancelled + Standard orders by city that have at least three temporally valid promotions and an amount below the associated state's Merchant/Shipped average. The input is read from HDFS and the final submission is exported as one normal-filesystem Parquet file.
+
+### Prerequisites
+
+- Spark 4.2.0 with Scala 2.13 and JDK 17.
+- HDFS is configured at `hdfs://localhost:9000`.
+- The input CSV exists at:
+
+```text
+/user/vandiemmy/lab3/input/Amazon Sale Report.csv
+```
+
+Start HDFS and YARN, then verify the input:
+
+```bash
+start-dfs.sh
+start-yarn.sh
+jps
+
+hdfs dfs -ls -h \
+  '/user/vandiemmy/lab3/input/Amazon Sale Report.csv'
+```
+
+```bash
+cd src/Task_2-1
+
+TASK21_SPARK_HOME="$(dirname "$(dirname \
+  "$(readlink -f "$(command -v spark-submit)")")")"
+TASK21_BUILD_DIR="$(mktemp -d /tmp/task21-yarn.XXXXXX)"
+
+mkdir -p "$TASK21_BUILD_DIR/classes"
+
+java \
+  -cp "$TASK21_SPARK_HOME/jars/*" \
+  scala.tools.nsc.Main \
+  -classpath "$TASK21_SPARK_HOME/jars/*" \
+  -d "$TASK21_BUILD_DIR/classes" \
+  Task21.scala
+
+jar cf "$TASK21_BUILD_DIR/Task21.jar" \
+  -C "$TASK21_BUILD_DIR/classes" .
+```
+
+### Run separate YARN applications
+
+Each application evaluates and writes the pipeline once. Five separate
+applications are required because YARN reports `memory-seconds` and
+`vcore-seconds` per application.
+
+Run the following in the same terminal used to create the temporary JAR:
+
+```bash
+set -eo pipefail
+mkdir -p /home/vandiemmy/lab3/task21-yarn-benchmark
+
+for TASK21_RUN in 1 2 3 4 5; do
+  TASK21_SUBMIT_LOG="/home/vandiemmy/lab3/task21-yarn-benchmark/submit-${TASK21_RUN}.log"
+
+  "$TASK21_SPARK_HOME/bin/spark-submit" \
+    --master yarn \
+    --deploy-mode cluster \
+    --conf spark.yarn.submit.waitAppCompletion=true \
+    --conf spark.yarn.appMasterEnv.JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
+    --conf spark.executorEnv.JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
+    --class Task21 \
+    "$TASK21_BUILD_DIR/Task21.jar" \
+    'hdfs://localhost:9000/user/vandiemmy/lab3/input/Amazon Sale Report.csv' \
+    'hdfs://localhost:9000/user/vandiemmy/lab3/output/Task_2-1_temp' \
+    "$TASK21_RUN" \
+    2>&1 | tee "$TASK21_SUBMIT_LOG"
+
+  TASK21_APP_ID="$(grep -oE 'application_[0-9]+_[0-9]+' \
+    "$TASK21_SUBMIT_LOG" | tail -n 1)"
+
+  yarn application -status "$TASK21_APP_ID" 2>&1 | \
+    tee "/home/vandiemmy/lab3/task21-yarn-benchmark/status-${TASK21_RUN}.txt"
+done
+```
+
+To inspect the relevant physical-plan operators:
+
+```bash
+TASK21_LAST_APP_ID="$(grep -oE 'application_[0-9]+_[0-9]+' \
+  /home/vandiemmy/lab3/task21-yarn-benchmark/submit-5.log | tail -n 1)"
+
+TASK21_DRIVER_LOG="$(find \
+  "$HADOOP_HOME/logs/userlogs/$TASK21_LAST_APP_ID" \
+  -path '*/container_*_000001/stdout' -print -quit)"
+
+sed -n \
+  '/== Physical Plan ==/,/========== YARN BENCHMARK RUN ==========/p' \
+  "$TASK21_DRIVER_LOG" |
+grep -E 'BroadcastHashJoin|BroadcastExchange|Exchange hashpartitioning'
+```
+
+### Verify the HDFS result
+
+Start PySpark:
+
+```bash
+pyspark --master 'local[*]'
+```
+
+Then run:
+
+```python
+from pyspark.sql import functions as F
+
+result = spark.read.parquet(
+    "hdfs://localhost:9000/user/vandiemmy/lab3/output/Task_2-1_temp"
+)
+
+result.printSchema()
+print("Number of cities:", result.count())
+result.agg(
+    F.min("percentage").alias("minimum_percentage"),
+    F.max("percentage").alias("maximum_percentage")
+).show()
+result.show(10, truncate=False)
+```
+
+Expected validation:
+
+```text
+city: string
+percentage: double
+percentage range: 0.0
+```
+
+### Export the single submission file
+
+Copy the one Parquet part-file to a path without spaces first:
+
+```bash
+mkdir -p /home/vandiemmy/lab3/result
+
+hdfs dfs -get -f \
+  '/user/vandiemmy/lab3/output/Task_2-1_temp/part-*.parquet' \
+  /home/vandiemmy/lab3/result/Task_2-1.parquet
+```
 
 ## Task 2-2
 
