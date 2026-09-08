@@ -203,58 +203,39 @@ hdfs dfs -get -f \
 
 ## Task 2-2
 
-Per-SKU-month P80/P90 promotion-count thresholds and the population
-standard deviation of `Amount` over the qualifying records, computed with
-Spark's built-in `percentile_approx` and with a self-implemented exact
-percentile. Exports one Parquet file.
+Per-SKU-month P80/P90 promotion-count thresholds and the population standard
+deviation of `Amount` over the qualifying orders, computed with Spark's
+`percentile_approx` and with a self-implemented exact percentile. Exports one
+Parquet file.
 
-### Prerequisites
+Requires Spark 3.5.4, JDK 17, sbt, and the Lab 1 Hadoop cluster running with
+the input CSV at `hdfs://namenode:9000/lab3/task2-2/input/asr.csv`. The Docker
+Compose file and Hadoop configuration are in the Drive folder linked from
+`docs/drive_link.txt`.
 
-- Spark 3.5.4, JDK 17, sbt.
-- The Lab 1 Hadoop cluster running (HDFS and YARN), with container
-  hostnames resolvable from the submitting host.
-- Input CSV at `hdfs://namenode:9000/lab3/task2-2/input/asr.csv`.
+### Set up and build
 
-The Docker Compose file and Hadoop configuration for the cluster are in
-the Drive folder linked from `docs/drive_link.txt`.
-
-### Set up the sbt project
-
-Put the sources into the layout sbt expects:
+Create the sbt layout, write the build files, then compile:
 
 ```bash
 mkdir -p ~/task-2-2/src/main/scala ~/task-2-2/project
 cp src/Task_2-2/*.scala ~/task-2-2/src/main/scala/
 cd ~/task-2-2
-```
 
-Write `build.sbt`:
-
-```scala
+cat > build.sbt <<'EOF'
 name := "task-2-2"
-
 version := "0.1.0"
-
 scalaVersion := "2.12.18"
+libraryDependencies += "org.apache.spark" %% "spark-sql" % "3.5.4" % "provided"
+EOF
 
-libraryDependencies +=
-  "org.apache.spark" %% "spark-sql" % "3.5.4" % "provided"
-```
+echo 'sbt.version=1.13.0' > project/build.properties
 
-Write `project/build.properties`:
-
-```text
-sbt.version=1.13.0
-```
-
-### Build
-
-```bash
 sbt package
 ```
 
-Produces `target/scala-2.12/task-2-2_2.12-0.1.0.jar`. Spark is
-`provided`, so run it with `spark-submit`, not `java -jar`.
+Produces `target/scala-2.12/task-2-2_2.12-0.1.0.jar`. Spark is `provided`, so
+run it with `spark-submit`, not `java -jar`.
 
 ### Run on YARN
 
