@@ -10,7 +10,47 @@ This repository contains the source code and output files for Lab 3.
 
 ## Task 1-1
 
-Instructions will be added here.
+Dynamic sliding-window computation using Hadoop MapReduce. The solution consists
+of three jobs:
+
+- `StateCountJob.scala`: counts bought records per state.
+- `BucketAggregationJob.scala`: maps bought records to window buckets and aggregates statistics.
+- `WinnerSelectionJob.scala`: selects the winning size using frequency, variance, and lexical tie-breaking.
+
+### Compile
+
+```bash
+cd ~/Lab3/Task_1-1
+
+scalac -classpath "$(hadoop classpath)" \
+  -d build/classes-state src/StateCountJob.scala
+
+scalac -classpath "$(hadoop classpath)" \
+  -d build/classes-bucket src/BucketAggregationJob.scala
+
+scalac -classpath "$(hadoop classpath)" \
+  -d build/classes-winner src/WinnerSelectionJob.scala
+```
+
+### Run
+
+```bash
+# Job 0
+hadoop jar build/StateCountJob-fat.jar StateCountJob \
+  /lab3/task1_1/input \
+  /lab3/task1_1/state_counts
+
+# Job 1
+hadoop jar build/BucketAggregationJob-fat.jar BucketAggregationJob \
+  /lab3/task1_1/input \
+  /lab3/task1_1/state_counts/part-r-00000 \
+  /lab3/task1_1/bucket_stats
+
+# Job 2
+hadoop jar build/WinnerSelectionJob-fat.jar WinnerSelectionJob \
+  /lab3/task1_1/bucket_stats \
+  /lab3/task1_1/final
+```
 
 ## Task 1-2
 
